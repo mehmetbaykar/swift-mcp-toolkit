@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Keep GitHub Actions up to date
+  # Keep GitHub Actions up-to-date
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -8,7 +8,7 @@ updates:
     labels:
       - dependencies
 
-  # Keep Swift Package Manager dependencies up to date
+  # Keep Swift Package Manager dependencies up-to-date
   - package-ecosystem: "swift"
     directory: "/"
     schedule:
