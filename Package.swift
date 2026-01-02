@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 import PackageDescription
 
 let package = Package(
@@ -17,7 +17,7 @@ let package = Package(
     )
   ],
   dependencies: [
-    .package(url: "https://github.com/ajevans99/swift-json-schema.git", from: "0.9.0"),
+    .package(url: "https://github.com/ajevans99/swift-json-schema.git", from: "0.11.0"),
     .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.10.2"),
   ],
   targets: [
