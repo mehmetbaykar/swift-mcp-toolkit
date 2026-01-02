@@ -12,18 +12,18 @@ jobs:
       fail-fast: false
       matrix:
         platform: [linux, macos, ios, watchos, tvos]
-        swift: ["6.0"]
+        swift: ["6.2"]
         include:
           - platform: linux
             os: ubuntu-latest
           - platform: macos
-            os: macos-15
+            os: macos-26
           - platform: ios
-            os: macos-15
+            os: macos-26
           - platform: watchos
-            os: macos-15
+            os: macos-26
           - platform: tvos
-            os: macos-15
+            os: macos-26
     steps:
       - name: Checkout
         uses: actions/checkout@v5
