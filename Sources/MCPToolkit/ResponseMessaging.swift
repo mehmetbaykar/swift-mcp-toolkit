@@ -297,7 +297,7 @@ public struct ResponseMessagingUnexpectedErrorContext: Sendable {
 }
 
 extension ValidationResult {
-  fileprivate func prettyJSONString() -> String {
+  func prettyJSONString() -> String {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     guard let data = try? encoder.encode(self) else {
