@@ -1,3 +1,4 @@
+import Foundation
 import JSONSchema
 import JSONSchemaBuilder
 import MCP
@@ -31,7 +32,12 @@ extension PromptMessageContent {
     case .audio(let data, let mimeType):
       return .audio(data: data, mimeType: mimeType)
     case .resource(let uri, let mimeType, let text, let blob):
-      return .resource(uri: uri, mimeType: mimeType, text: text, blob: blob)
+      if let blob {
+        let data = Data(base64Encoded: blob) ?? Data()
+        return .resource(resource: .binary(data, uri: uri, mimeType: mimeType))
+      } else {
+        return .resource(resource: .text(text ?? "", uri: uri, mimeType: mimeType))
+      }
     }
   }
 }

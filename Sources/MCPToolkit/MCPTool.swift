@@ -159,7 +159,7 @@ public struct ToolContentItem: Sendable, ExpressibleByStringLiteral,
   }
 
   /// Creates an image content item.
-  public init(imageData: String, mimeType: String, metadata: [String: String]? = nil) {
+  public init(imageData: String, mimeType: String, metadata: Metadata? = nil) {
     self.content = .image(data: imageData, mimeType: mimeType, metadata: metadata)
   }
 
@@ -170,7 +170,8 @@ public struct ToolContentItem: Sendable, ExpressibleByStringLiteral,
 
   /// Creates an embedded resource content item.
   public init(resourceUri: String, mimeType: String, text: String? = nil) {
-    self.content = .resource(uri: resourceUri, mimeType: mimeType, text: text)
+    let resourceContent = Resource.Content.text(text ?? "", uri: resourceUri, mimeType: mimeType)
+    self.content = .resource(resource: resourceContent)
   }
 
   /// Creates content from the underlying MCP type.
