@@ -74,6 +74,70 @@ public protocol MCPTool: Sendable {
   func call(with arguments: Parameters) async throws(ToolError) -> Content
 }
 
+/// An opt-in tool protocol for returning both human-readable content and typed structured output.
+///
+/// Conforming to this protocol keeps the existing ``MCPTool`` input-side ergonomics while adding
+/// output schema publication and `structuredContent` support on top of the official MCP SDK.
+///
+/// Tools that do not need structured output should continue conforming to ``MCPTool`` only.
+public protocol MCPStructuredTool: MCPTool {
+  /// The typed payload encoded into `CallTool.Result.structuredContent`.
+  associatedtype Output: Codable & Sendable
+  /// The JSON Schema builder output describing the structured result shape.
+  associatedtype OutputSchema: JSONSchemaComponent<Output>
+
+  /// The JSON Schema definition published as `outputSchema` through `tools/list`.
+  @JSONSchemaBuilder
+  var outputSchema: OutputSchema { get }
+
+  /// Execute the tool with validated arguments and return both content and structured output.
+  ///
+  /// - Parameter arguments: The decoded argument payload that satisfied ``MCPTool/parameters``.
+  /// - Returns: The content and structured payload to return to the caller.
+  /// - Throws: ``ToolError`` for custom error content.
+  func callStructured(with arguments: Parameters) async throws(ToolError)
+    -> StructuredToolResult<Output>
+}
+
+/// A combined tool result that includes optional user-facing content and typed structured output.
+public struct StructuredToolResult<Output: Codable & Sendable>: Sendable {
+  /// User-facing tool content returned alongside the structured payload.
+  public let content: [ToolContentItem]
+  /// The structured payload encoded into `CallTool.Result.structuredContent`.
+  public let structuredContent: Output
+
+  /// Creates a result with structured output only.
+  ///
+  /// - Parameter structuredContent: The structured payload to encode.
+  public init(structuredContent: Output) {
+    self.content = []
+    self.structuredContent = structuredContent
+  }
+
+  /// Creates a result with both content and structured output.
+  ///
+  /// - Parameters:
+  ///   - content: User-facing content items to return.
+  ///   - structuredContent: The structured payload to encode.
+  public init(content: [ToolContentItem], structuredContent: Output) {
+    self.content = content
+    self.structuredContent = structuredContent
+  }
+
+  /// Creates a result with both content and structured output using the tool content builder.
+  ///
+  /// - Parameters:
+  ///   - structuredContent: The structured payload to encode.
+  ///   - content: A result builder that produces user-facing content items.
+  public init(
+    structuredContent: Output,
+    @ToolContentBuilder content: () -> [ToolContentItem]
+  ) {
+    self.content = content()
+    self.structuredContent = structuredContent
+  }
+}
+
 /// An error type that tools can throw to provide custom error content.
 ///
 /// Use this error type when you want to return specific error messages with structured content:
@@ -111,6 +175,11 @@ public struct ToolError: Error, Sendable {
 extension MCPTool {
   /// This is called by the MCP server infrastructure and handles automatic error conversion.
   func callToolResult(with arguments: Parameters) async throws -> CallTool.Result {
+    if let structuredTool = self as? any MCPStructuredTool {
+      let adapter = structuredToolAdapter(for: structuredTool)
+      return try await adapter.callToolResult(arguments)
+    }
+
     do {
       let contentItems = try await call(with: arguments) as Content
       return CallTool.Result(content: contentItems.map { $0.toToolContent() })
@@ -142,6 +211,22 @@ extension MCPTool where Parameters: Schemable, Parameters.Schema.Output == Param
   }
 }
 
+extension MCPStructuredTool {
+  /// Default implementation that preserves the existing content-only ``MCPTool`` behavior.
+  public func call(with arguments: Parameters) async throws(ToolError) -> Content {
+    let result = try await callStructured(with: arguments)
+    return result.content
+  }
+}
+
+extension MCPStructuredTool where Output: Schemable, Output.Schema.Output == Output {
+  /// Provides a synthesized output schema for structured results when `Output` conforms to
+  /// ``Schemable``.
+  public var outputSchema: some JSONSchemaComponent<Output> {
+    Output.schema
+  }
+}
+
 // MARK: - Tool Result Building
 
 /// Represents a single content item for tool results.
@@ -155,17 +240,22 @@ public struct ToolContentItem: Sendable, ExpressibleByStringLiteral,
 
   /// Creates a text content item.
   public init(text: String) {
-    self.content = .text(text)
+    self.content = .text(text: text, annotations: nil, _meta: nil)
   }
 
   /// Creates an image content item.
   public init(imageData: String, mimeType: String, metadata: Metadata? = nil) {
-    self.content = .image(data: imageData, mimeType: mimeType, metadata: metadata)
+    self.content = .image(
+      data: imageData,
+      mimeType: mimeType,
+      annotations: nil,
+      _meta: metadata
+    )
   }
 
   /// Creates an audio content item.
   public init(audioData: String, mimeType: String) {
-    self.content = .audio(data: audioData, mimeType: mimeType)
+    self.content = .audio(data: audioData, mimeType: mimeType, annotations: nil, _meta: nil)
   }
 
   /// Creates an embedded resource content item.
@@ -180,7 +270,7 @@ public struct ToolContentItem: Sendable, ExpressibleByStringLiteral,
   }
 
   public init(stringLiteral value: String) {
-    self.content = .text(value)
+    self.content = .text(text: value, annotations: nil, _meta: nil)
   }
 
   /// Converts to the underlying MCP `Tool.Content` type.
@@ -211,4 +301,35 @@ extension ContentBuilder where Item == ToolContentItem {
   public static func buildExpression(_ group: Group<ToolContentItem>) -> ToolContentItem {
     ToolContentItem(text: group.joinedText)
   }
+}
+
+struct StructuredToolAdapter: Sendable {
+  let outputSchema: MCP.Value
+  let callToolResult: @Sendable (Any) async throws -> CallTool.Result
+}
+
+func structuredToolAdapter<T: MCPStructuredTool>(
+  for tool: T
+) -> StructuredToolAdapter {
+  StructuredToolAdapter(
+    outputSchema: .init(schemaValue: tool.outputSchema.schemaValue),
+    callToolResult: { erasedArguments in
+      guard let arguments = erasedArguments as? T.Parameters else {
+        throw MCPError.invalidParams("Structured tool argument type mismatch for \(tool.name)")
+      }
+
+      do {
+        let result = try await tool.callStructured(with: arguments)
+        return try CallTool.Result(
+          content: result.content.map { $0.toToolContent() },
+          structuredContent: result.structuredContent
+        )
+      } catch let error as ToolError {
+        return CallTool.Result(
+          content: error.content.map { $0.toToolContent() },
+          isError: true
+        )
+      }
+    }
+  )
 }

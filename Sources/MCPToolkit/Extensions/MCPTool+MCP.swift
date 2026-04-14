@@ -60,11 +60,19 @@ extension MCPTool {
   /// - Returns: A configured ``MCP/Tool`` populated with the tool's metadata and JSON Schema.
   /// - SeeAlso: https://modelcontextprotocol.io/specification/2025-06-18/server/tools#listing-tools
   public func toTool() -> Tool {
-    Tool(
+    let outputSchema: MCP.Value? =
+      if let structuredTool = self as? any MCPStructuredTool {
+        structuredToolAdapter(for: structuredTool).outputSchema
+      } else {
+        nil
+      }
+
+    return Tool(
       name: name,
       description: description,
       inputSchema: .init(schemaValue: parameters.schemaValue),
-      annotations: annotations
+      annotations: annotations,
+      outputSchema: outputSchema
     )
   }
 }

@@ -188,6 +188,54 @@ For simple single-line errors, use the convenience initializer:
 throw ToolError("Value must be positive")
 ```
 
+### Structured Tool Output
+
+If a tool needs to return typed structured data in addition to human-readable content, conform to
+`MCPStructuredTool`.
+
+```swift
+struct StructuredWeatherTool: MCPStructuredTool {
+  typealias Output = WeatherResult
+
+  let name = "structured_weather"
+
+  @Schemable
+  struct Parameters {
+    let location: String
+  }
+
+  @Schemable
+  struct WeatherResult: Codable, Sendable {
+    let location: String
+    let condition: String
+    let temperatureCelsius: Int
+  }
+
+  func callStructured(with arguments: Parameters) async throws(ToolError)
+    -> StructuredToolResult<WeatherResult>
+  {
+    let result = WeatherResult(
+      location: arguments.location,
+      condition: "sunny",
+      temperatureCelsius: 24
+    )
+
+    return StructuredToolResult(structuredContent: result) {
+      ToolContentItem(
+        text: "The weather in \(arguments.location) is 24°C and sunny."
+      )
+    }
+  }
+}
+```
+
+Structured tools:
+
+- publish both `inputSchema` and `outputSchema` in `tools/list`
+- return `structuredContent` in `tools/call`
+- can still include normal text, image, audio, or resource content for model-friendly summaries
+- keep the existing `ToolError` behavior, with `structuredContent` omitted on errors
+
 ## Running the Example Server with MCP Inspector
 
 [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) is an interactive development tool for MCP servers.

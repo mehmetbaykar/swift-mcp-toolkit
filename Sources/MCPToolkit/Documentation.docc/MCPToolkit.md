@@ -94,6 +94,48 @@ struct ValidatedTool: MCPTool {
 }
 ```
 
+### Structured Tool Output
+
+Tools that need to return typed structured data can opt into ``MCPStructuredTool`` while keeping
+the existing ``MCPTool`` input-side ergonomics.
+
+```swift
+struct StructuredWeatherTool: MCPStructuredTool {
+  typealias Output = WeatherResult
+
+  let name = "structured_weather"
+
+  @Schemable
+  struct Parameters {
+    let city: String
+  }
+
+  @Schemable
+  struct WeatherResult: Codable, Sendable {
+    let city: String
+    let condition: String
+    let temperatureCelsius: Int
+  }
+
+  func callStructured(with arguments: Parameters) async throws(ToolError)
+    -> StructuredToolResult<WeatherResult>
+  {
+    let result = WeatherResult(
+      city: arguments.city,
+      condition: "sunny",
+      temperatureCelsius: 24
+    )
+
+    return StructuredToolResult(structuredContent: result) {
+      ToolContentItem(text: "The weather in \(arguments.city) is 24°C and sunny.")
+    }
+  }
+}
+```
+
+Structured tools publish `outputSchema` through `tools/list` and return `structuredContent`
+through `tools/call`, while continuing to support normal content items and `ToolError`.
+
 ### Resources
 
 MCP Resources let servers expose data that clients can read. Define resources using the `MCPResource` protocol and the `@ResourceContentBuilder`:
@@ -194,8 +236,10 @@ await server.register(resources: [
 ### Core APIs
 
 - `MCPTool`
+- `MCPStructuredTool`
 - `MCPTool/call(arguments:)`
 - `MCPTool/toTool()`
+- `StructuredToolResult`
 - `ToolError`
 - `ToolContentItem`
 - `ToolContentBuilder`

@@ -102,7 +102,7 @@ extension MCPPrompt {
   /// and calls `getMessages`.
   ///
   /// This helper is invoked by the `Server.register(prompts:)` integration to:
-  /// 1. Transform the `[String: MCP.Value]?` arguments from the SDK into `JSONValue`.
+  /// 1. Transform the `[String: MCP.Value]?` arguments into `JSONValue`.
   /// 2. Parse and validate them against the prompt's declared schema.
   /// 3. Forward the confirmed payload into `getMessages(arguments:)`.
   ///
@@ -114,10 +114,27 @@ extension MCPPrompt {
     -> GetPrompt
     .Result
   {
-    let params: Arguments
+    let object = (arguments ?? [:]).mapValues(JSONValue.init(value:))
+    return try await callGetMessages(with: object)
+  }
 
-    // Handle nil arguments by creating an empty object
-    let object = (arguments ?? [:]).mapValues { JSONValue(value: $0) }
+  /// Converts the raw SDK prompt arguments into a schema-shaped object and calls `getMessages`.
+  ///
+  /// The official `swift-sdk` 0.12.0 prompt transport now supplies `[String: String]?` here,
+  /// so this adapter stays internal to the registration path instead of weakening the public
+  /// helper API above.
+  ///
+  /// - Parameter arguments: Raw prompt arguments from `GetPrompt.Parameters.arguments`.
+  /// - Returns: A `GetPrompt.Result` containing the generated messages.
+  /// - Throws: `MCPError` for validation failures or errors from `getMessages`.
+  func callGetMessages(stringArguments arguments: [String: String]?) async throws
+    -> GetPrompt.Result
+  {
+    try await callGetMessages(with: coercePromptArguments(arguments ?? [:]))
+  }
+
+  private func callGetMessages(with object: [String: JSONValue]) async throws -> GetPrompt.Result {
+    let params: Arguments
 
     do {
       params = try self.arguments.parseAndValidate(.object(object))
@@ -143,5 +160,73 @@ extension MCPPrompt {
       description: description,
       messages: messages.map { $0.toPromptMessage() }
     )
+  }
+
+  private func coercePromptArguments(_ arguments: [String: String]) -> [String: JSONValue] {
+    let propertySchemas = promptPropertySchemas()
+    return arguments.reduce(into: [:]) { partialResult, pair in
+      partialResult[pair.key] = coercePromptArgument(pair.value, using: propertySchemas[pair.key])
+    }
+  }
+
+  private func promptPropertySchemas() -> [String: JSONValue] {
+    let schemaValue = arguments.schemaValue
+    guard case .object(let objectValue) = schemaValue,
+      let properties = objectValue["properties"],
+      case .object(let propsObject) = properties
+    else {
+      return [:]
+    }
+
+    return propsObject
+  }
+
+  private func coercePromptArgument(_ rawValue: String, using schemaValue: JSONValue?) -> JSONValue
+  {
+    guard let schemaValue, case .object(let schemaObject) = schemaValue else {
+      return .string(rawValue)
+    }
+
+    let supportedTypes = schemaTypes(from: schemaObject)
+
+    if supportedTypes.contains("boolean") {
+      switch rawValue.lowercased() {
+      case "true":
+        return .boolean(true)
+      case "false":
+        return .boolean(false)
+      default:
+        break
+      }
+    }
+
+    if supportedTypes.contains("integer"), let intValue = Int(rawValue) {
+      return .integer(intValue)
+    }
+
+    if supportedTypes.contains("number"), let doubleValue = Double(rawValue) {
+      return .number(doubleValue)
+    }
+
+    if supportedTypes.contains("null"), rawValue == "null" {
+      return .null
+    }
+
+    return .string(rawValue)
+  }
+
+  private func schemaTypes(from schemaObject: [String: JSONValue]) -> Set<String> {
+    guard let typeValue = schemaObject["type"] else {
+      return []
+    }
+
+    switch typeValue {
+    case .string(let typeName):
+      return [typeName]
+    case .array(let values):
+      return Set(values.compactMap(\.string))
+    default:
+      return []
+    }
   }
 }

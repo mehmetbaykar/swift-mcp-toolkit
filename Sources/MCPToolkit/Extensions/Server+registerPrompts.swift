@@ -34,7 +34,7 @@ extension Server {
         throw MCPError.invalidParams("Unknown prompt: \(params.name)")
       }
 
-      return try await prompt.callGetMessages(with: params.arguments)
+      return try await prompt.callGetMessages(stringArguments: params.arguments)
     }
   }
 }

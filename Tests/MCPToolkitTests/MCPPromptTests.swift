@@ -221,7 +221,7 @@ struct MCPPromptMessageTests {
 
     // First message should be user
     let firstMessage = result.messages[0]
-    #expect(firstMessage.role == .user)
+    #expect(firstMessage.role == Prompt.Message.Role.user)
     if case .text(let text) = firstMessage.content {
       #expect(text == "You are a helpful assistant.")
     } else {
@@ -230,7 +230,7 @@ struct MCPPromptMessageTests {
 
     // Second message should be assistant
     let secondMessage = result.messages[1]
-    #expect(secondMessage.role == .assistant)
+    #expect(secondMessage.role == Prompt.Message.Role.assistant)
     if case .text(let text) = secondMessage.content {
       #expect(text == "Hello, Alice!")
     } else {
@@ -390,8 +390,8 @@ struct PromptMessageContentTests {
     }
 
     // Check resource content
-    if case .resource(let uri, _, _, _) = result.messages[3].content {
-      #expect(uri == "file://test.txt")
+    if case .resource(let resource, _, _) = result.messages[3].content {
+      #expect(resource.uri == "file://test.txt")
     } else {
       Issue.record("Expected resource content at index 3")
     }
@@ -406,8 +406,8 @@ struct PromptMessageBuilderTests {
     let result = try await prompt.callGetMessages(with: ["message": .string("test")])
 
     #expect(result.messages.count == 2)
-    #expect(result.messages[0].role == .user)
-    #expect(result.messages[1].role == .user)
+    #expect(result.messages[0].role == Prompt.Message.Role.user)
+    #expect(result.messages[1].role == Prompt.Message.Role.user)
   }
 
   @Test("Builder works with PromptMessageGroup")
@@ -509,7 +509,7 @@ struct PromptServerIntegrationTests {
 
       await transport.push(
         try encoder.encode(
-          GetPrompt.request(.init(name: prompt.name, arguments: ["name": .string("Test")]))
+          GetPrompt.request(.init(name: prompt.name, arguments: ["name": "Test"]))
         )
       )
 

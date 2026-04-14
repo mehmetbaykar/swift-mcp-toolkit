@@ -10,6 +10,7 @@ func makeMCPServer() async -> Server {
   await server.register(tools: [
     GreetingTool(),
     MathTool(),
+    StructuredWeatherTool(),
     WeatherTool(),
   ])
 
