@@ -404,7 +404,7 @@ Add `swift-mcp-toolkit` to your `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/ajevans99/swift-mcp-toolkit.git", from: "0.1.0")
+  .package(url: "https://github.com/ajevans99/swift-mcp-toolkit.git", from: "0.5.0")
 ]
 ```
 
